@@ -23,7 +23,7 @@ debug_print('thread', colorize('%{yellow}>>>>>%{reset} chipmunk_mt started'))
 
 require 'joystate'
 require "love"
-require "love_inc".require()
+require "love_inc".require_pls()
 require 'pipeline'
 
 local Cm = require 'chipmunk'
