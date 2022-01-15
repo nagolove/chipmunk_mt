@@ -69,6 +69,38 @@ local tank
 
 
 
+local function channel_experiment()
+
+   local lt = love.thread
+   local ch = lt.getChannel("channel_experiment")
+
+   local thread = lt.newThread([[
+        local lt = love.thread
+        local ch = lt.getChannel("channel_experiment")
+        local n = ch:pop()
+        print("thread", n)
+        while n do
+            n = ch:pop()
+            print("thread", n)
+        end
+    ]])
+
+   for i = 1, 5 do
+      ch:push(i)
+   end
+
+   print("before start")
+   print("error", thread:getError())
+   thread:start()
+   local sock = require("socket")
+   sock.sleep(2)
+end
+
+
+
+
+
+
 local last_render
 
 local pipeline = Pipeline.new("scenes/chipmunk_mt")
@@ -153,24 +185,23 @@ local function initRenderCode()
     local inspect = require "inspect"
     while true do
         love.graphics.setColor(col)
+
         local verts = graphic_command_channel:demand()
+        --local verts = graphic_command_channel:pop()
         love.graphics.polygon('fill', verts)
+        --love.graphics.circle('fill', 500, 500, 100)
+
         coroutine.yield()
     end
     ]])
 
-
-
-
-
-
-
-
-
-
-
-
-
+   pipeline:pushCode("print_debug_filters", [[
+    local render = require "debug_print".render
+    while true do
+        render(0, 0)
+        coroutine.yield()
+    end
+    ]])
 
 
 end
@@ -188,6 +219,19 @@ local function init()
    debug_print("phys", 'pw.getBodies()', inspect(pw.getBodies()))
 end
 
+local function circle_under_mouse()
+   local draw_calls = 2
+   local x, y = love.mouse.getPosition()
+   local rad = 50
+   for _ = 1, draw_calls do
+      pipeline:open('circle_under_mouse')
+      pipeline:push(y)
+      pipeline:push(x)
+      pipeline:push(rad)
+      pipeline:close()
+   end
+end
+
 
 
 
@@ -197,26 +241,21 @@ end
 
 local function render()
    if pipeline:ready() then
-
-
-
-
       pipeline:openAndClose('clear')
 
 
 
-
-
-
-
-
-
-
-
-
-
       pw.eachSpaceBody(bodyIter)
+
+      circle_under_mouse()
+
       pipeline:openAndClose('text')
+
+
+
+      pipeline:openAndClose('print_debug_filters')
+
+
    end
 end
 
@@ -242,9 +281,13 @@ local function eachShape(b, shape)
          table.insert(verts, vert.x)
          table.insert(verts, vert.y)
       end
-      pipeline:open('poly_shape')
-      pipeline:push(verts)
-      pipeline:close()
+
+      if verts then
+         pipeline:open('poly_shape')
+         pipeline:push(verts)
+         pipeline:close()
+      end
+
    end
 
 end
