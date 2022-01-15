@@ -35,10 +35,12 @@ local joystick = love.joystick
 local event_channel = love.thread.getChannel("event_channel")
 local main_channel = love.thread.getChannel("main_channel")
 
+local pw = require "physics_wrapper"
+
 local bodyIter: pw.EachSpaceBodyIter
 local shapeIter: pw.EachBodyShapeIter
 
-local tank: pw.Body
+local tanks: {pw.Body} = {}
 
 --[[ {{{
 -- chipmunk.d.tl
@@ -69,42 +71,9 @@ space.gravity.y = -100
 -- }}}
 --]]
 
-local function channel_experiment()
-    --{{{
-    local lt = love.thread
-    local ch = lt.getChannel("channel_experiment")
-
-    local thread = lt.newThread([[
-        local lt = love.thread
-        local ch = lt.getChannel("channel_experiment")
-        local n = ch:pop()
-        print("thread", n)
-        while n do
-            n = ch:pop()
-            print("thread", n)
-        end
-    ]])
-
-    for i = 1, 5 do
-        ch:push(i)
-    end
-
-    print("before start")
-    print("error", thread:getError())
-    thread:start()
-    local sock = require "socket"
-    sock.sleep(2)
-end
-
---channel_experiment()
---os.exit(2)
-
--- }}}
-
 local last_render: number
 
 local pipeline = Pipeline.new("scenes/chipmunk_mt")
-local pw = require "physics_wrapper"
 
 -- Как часто перекомпилировать код рисовки?
 -- Варианты - 
@@ -206,6 +175,8 @@ local function initRenderCode()
     -- }}}
 end
 
+local tanks_num = 100
+
 local function init()
 
     initJoy()
@@ -213,8 +184,11 @@ local function init()
     pw.init(pipeline)
     last_render = love.timer.getTime()
 
-    -- Почему не указывается позиция?
-    tank = pw.newBoxBody(200, 200)
+    local w, h = love.graphics.getDimensions()
+    for _ = 1, tanks_num do
+        local xp, yp = love.math.random(1, w), love.math.random(1, h)
+        table.insert(tanks, pw.newBoxBody(xp, yp))
+    end
 
     debug_print("phys", 'pw.getBodies()', inspect(pw.getBodies()))
 end
@@ -240,24 +214,34 @@ end
 слишком простая.
 --]]
 local function render()
-    if pipeline:ready() then
-        pipeline:openAndClose('clear')
-        --pipeline:open('clear')
-        --pipeline:close()
+    pipeline:openAndClose('clear')
+    pw.eachSpaceBody(bodyIter)
+    circle_under_mouse()
+    pipeline:openAndClose('text')
+    pipeline:openAndClose 'print_debug_filters'
 
-        pw.eachSpaceBody(bodyIter)
-
-        circle_under_mouse()
-
-        pipeline:openAndClose('text')
-        --pipeline:open('text')
-        --pipeline:close()
-
-        pipeline:openAndClose 'print_debug_filters'
-        --pipeline:open 'print_debug_filters'
-        --pipeline:close()
-    end
+    pipeline:sync()
 end
+
+--local function render()
+    --if pipeline:ready() then
+        --pipeline:openAndClose('clear')
+        ----pipeline:open('clear')
+        ----pipeline:close()
+
+        --pw.eachSpaceBody(bodyIter)
+
+        --circle_under_mouse()
+
+        --pipeline:openAndClose('text')
+        ----pipeline:open('text')
+        ----pipeline:close()
+
+        --pipeline:openAndClose 'print_debug_filters'
+        ----pipeline:open 'print_debug_filters'
+        ----pipeline:close()
+    --end
+--end
 
 local is_stop = false
 
@@ -277,7 +261,7 @@ local function eachShape(b: Cm.cpBody, shape: Cm.cpShape)
         for i = 0, num - 1 do
             local vert = pw.polyShapeGetVert(shape, i)
             --print(inspect(vert))
-            debug_print("verts", 'x, y', vert.x, vert.y)
+            --debug_print("verts", 'x, y', vert.x, vert.y)
             table.insert(verts, vert.x)
             table.insert(verts, vert.y)
         end
@@ -309,6 +293,7 @@ shapeIter = pw.newEachBodyShapeIter(eachShape)
 local function applyInput()
     local leftBtn, rightBtn, downBtn, upBtn = 3, 2, 1, 4
     local k = 0.1
+    local tank: pw.Body = tanks[1]
     if joy then
         local dx, dy, _ = joy:getAxes()
         if dx and dy then
@@ -398,9 +383,9 @@ local function mainloop()
         applyInput()
         --print('------------------------------------------------')
         --print('------------------------------------------------')
-        debug_print('phys', tank:getInfoStr())
-        local pos = tank:getPos()
-        debug_print('phys', 'tank pos', pos.x, pos.y)
+        --debug_print('phys', tank:getInfoStr())
+        --local pos = tank:getPos()
+        --debug_print('phys', 'tank pos', pos.x, pos.y)
 
         updateJoyState()
 
