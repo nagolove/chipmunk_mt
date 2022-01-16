@@ -4,6 +4,7 @@
 local colorize = require 'ansicolors2'.ansicolors
 local inspect = require "inspect"
 local dprint = require 'debug_print'
+local sformat = string.format
 local debug_print = dprint.debug_print
 
 dprint.set_filter { 
@@ -112,6 +113,26 @@ local function initRenderCode()
     --pipeline:pushCode("rect", rendercode)
 
     rendercode = [[
+    local font = love.graphics.newFont(24)
+    while true do
+        local old_font = love.graphics.getFont()
+
+        love.graphics.setColor{0, 0, 0}
+        love.graphics.setFont(font)
+
+        local msg = graphic_command_channel:demand()
+        local x = math.floor(graphic_command_channel:demand())
+        local y = math.floor(graphic_command_channel:demand())
+        love.graphics.print(msg, x, y)
+
+        love.graphics.setFont(old_font)
+
+        coroutine.yield()
+    end
+    ]]
+    pipeline:pushCode('formated_text', rendercode)
+
+    rendercode = [[
     while true do
         local w, h = love.graphics.getDimensions()
         --local x, y = math.random() * w, math.random() * h
@@ -158,7 +179,6 @@ local function initRenderCode()
         local verts = graphic_command_channel:demand()
         --local verts = graphic_command_channel:pop()
         love.graphics.polygon('fill', verts)
-        --love.graphics.circle('fill', 500, 500, 100)
 
         coroutine.yield()
     end
@@ -175,7 +195,8 @@ local function initRenderCode()
     -- }}}
 end
 
-local tanks_num = 100
+--local tanks_num = 20
+local tanks_num = 500
 
 local function init()
 
@@ -206,6 +227,16 @@ local function circle_under_mouse()
     end
 end
 
+local function print_io_rate()
+    local bytes = pipeline:get_received_in_sec()
+    local msg = sformat("received_in_sec = %d", math.floor(bytes / 1024))
+    pipeline:open('formated_text')
+    pipeline:push(msg)
+    pipeline:push(0)
+    pipeline:push(140)
+    pipeline:close()
+end
+
 --[[
 Откуда берутся мелькания при рисовке?
 Значит, что данные не сихронизируются? То есть основной поток получает
@@ -217,31 +248,13 @@ local function render()
     pipeline:openAndClose('clear')
     pw.eachSpaceBody(bodyIter)
     circle_under_mouse()
-    pipeline:openAndClose('text')
+
+    print_io_rate()
+
     pipeline:openAndClose 'print_debug_filters'
 
     pipeline:sync()
 end
-
---local function render()
-    --if pipeline:ready() then
-        --pipeline:openAndClose('clear')
-        ----pipeline:open('clear')
-        ----pipeline:close()
-
-        --pw.eachSpaceBody(bodyIter)
-
-        --circle_under_mouse()
-
-        --pipeline:openAndClose('text')
-        ----pipeline:open('text')
-        ----pipeline:close()
-
-        --pipeline:openAndClose 'print_debug_filters'
-        ----pipeline:open 'print_debug_filters'
-        ----pipeline:close()
-    --end
---end
 
 local is_stop = false
 
