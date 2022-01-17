@@ -184,11 +184,40 @@ local function initRenderCode()
     end
     ]])
 
+   pipeline:pushCode("poly_shape_fs_write", [[
+    local fs = love.filesystem
+    local serpent = require "serpent"
+
+    local col = {1, 0, 0, 1}
+    local inspect = require "inspect"
+    while true do
+        love.graphics.setColor(col)
+
+        local verts = graphic_command_channel:demand()
+        --local verts = graphic_command_channel:pop()
+        love.graphics.polygon('fill', verts)
+
+        --fs.append('verts.txt', serpent.dump(verts) .. "\n")
+
+        coroutine.yield()
+    end
+    ]])
+
    pipeline:pushCode("print_debug_filters", [[
     local render = require "debug_print".render
     while true do
         render(0, 0)
         coroutine.yield()
+    end
+    ]])
+
+   pipeline:pushCode('set_transform', [[
+    local gr = love.graphics
+    loca yield = coroutine.yield
+    while true do
+    fdf
+        gr.applyTransform(graphic_command_channel:demand())
+        yield()
     end
     ]])
 
@@ -258,10 +287,21 @@ end
 
 local is_stop = false
 
+local lvec = require("vector-light")
+
 local function eachShape(b, shape)
    debug_print('phys', 'eachShape call')
 
    local shape_type = pw.polyShapeGetType(shape)
+
+
+
+   local len = lvec.len(b.v.x, b.v.y)
+
+   local epsilon = 0.0001
+   if len < epsilon then
+
+   end
 
    if shape_type == pw.CP_POLY_SHAPE then
 
@@ -281,6 +321,7 @@ local function eachShape(b, shape)
 
       if verts then
          pipeline:open('poly_shape')
+
          pipeline:push(verts)
          pipeline:close()
       end
@@ -334,7 +375,8 @@ end
 local function updateJoyState()
    joyState:update()
    if joyState.state and joyState.state ~= "" then
-      debug_print('joy', joyState.state)
+
+      print('joy', joyState.state)
    end
 end
 
@@ -386,6 +428,11 @@ local function mainloop()
 
 
          render()
+
+
+
+
+
       end
 
 
