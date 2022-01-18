@@ -174,11 +174,48 @@ local function initRenderCode()
    pipeline:pushCode("poly_shape", [[
     local col = {1, 0, 0, 1}
     local inspect = require "inspect"
+
     while true do
         love.graphics.setColor(col)
 
         local verts = graphic_command_channel:demand()
         --local verts = graphic_command_channel:pop()
+        love.graphics.polygon('fill', verts)
+
+        coroutine.yield()
+    end
+    ]])
+
+   pipeline:pushCode("poly_shape_smart", [[
+    local col = {1, 0, 0, 1}
+    local inspect = require "inspect"
+
+    -- какое название лучше?
+    local hash = {}
+
+    local verts = nil
+    --local id = nil
+
+    while true do
+        love.graphics.setColor(col)
+
+        local cmd = graphic_command_channel:demand()
+        local id = graphic_command_channel:demand()
+
+        -- команды cmd:
+        -- new      - создать новый объект
+        -- draw     - рисовать существущий
+        -- remove   - удалить объект
+
+        if cmd == "new" then
+            verts = graphic_command_channel:demand()
+            hash[id] = verts
+        elseif cmd == "draw" then
+            verts = hash[id]
+        elseif cmd == "remove" then
+            hash[id] = nil
+        end
+
         love.graphics.polygon('fill', verts)
 
         coroutine.yield()
