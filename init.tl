@@ -32,6 +32,7 @@ local Cm = require 'chipmunk'
 love.filesystem.setRequirePath("?.lua;?/init.lua;scenes/chipmunk_mt/?.lua")
 --local format = string.format
 local joystick = love.joystick
+local Joystick = joystick.Joystick
 
 local event_channel = love.thread.getChannel("event_channel")
 local main_channel = love.thread.getChannel("main_channel")
@@ -213,9 +214,8 @@ local function initRenderCode()
 
     pipeline:pushCode('set_transform', [[
     local gr = love.graphics
-    loca yield = coroutine.yield
+    local yield = coroutine.yield
     while true do
-    fdf
         gr.applyTransform(graphic_command_channel:demand())
         yield()
     end
@@ -226,6 +226,8 @@ end
 
 --local tanks_num = 20
 local tanks_num = 500
+
+local camera: love.math.Transform = love.math.newTransform()
 
 local function init()
 
@@ -275,6 +277,11 @@ end
 --]]
 local function render()
     pipeline:openAndClose('clear')
+
+    pipeline:open('set_transform')
+    pipeline:push(camera)
+    pipeline:close()
+
     pw.eachSpaceBody(bodyIter)
     circle_under_mouse()
 
@@ -344,17 +351,60 @@ end
 bodyIter = pw.newEachSpaceBodyIter(eachBody)
 shapeIter = pw.newEachBodyShapeIter(eachShape)
 
+-- применять dt с прошлого кадра или dt полученный из pipeline?
+local function cameraScale(j: Joystick)
+    local axes = {j:getAxes()}
+    local dy = axes[2]
+    local factor = 0.01
+    if dy > 0 then
+        camera:scale(1 + factor, 1 + factor)
+    elseif dy < 0 then
+        camera:scale(1 - factor, 1 - factor)
+    end
+end
+
+-- применять dt с прошлого кадра или dt полученный из pipeline?
+local function cameraMovement(j: Joystick)
+    local axes = {j:getAxes()}
+    local dx, dy = axes[4], axes[5]
+    local amount_x, amount_y = 10, 10
+    local tx, ty = 0, 0
+    local changed = false
+
+    if dx > 0 then
+        changed = true
+        tx = -amount_x
+    elseif dx < 0 then
+        changed = true
+        tx = amount_x
+    end
+
+    if dy > 0 then
+        changed = true
+        ty = -amount_y
+    elseif dy < 0 then
+        changed = true
+        ty = amount_y
+    end
+
+    if changed then
+        camera:translate(tx, ty)
+    end
+end
+
 local function applyInput()
     local leftBtn, rightBtn, downBtn, upBtn = 3, 2, 1, 4
     local k = 0.1
     local tank: pw.Body = tanks[1]
     if joy then
+        --[[
         local dx, dy, _ = joy:getAxes()
         if dx and dy then
             local divisor = 20
             dx, dy = dx / divisor, dy / divisor
             tank:applyImpulse(dx, dy)
         end
+        --]]
 
         if joy:isDown(leftBtn) then
             tank:applyImpulse(-1. * k, 0)
@@ -369,6 +419,9 @@ local function applyInput()
             tank:applyImpulse(0, 1 * k)
             --print('down')
         end
+
+        cameraScale(joy)
+        cameraMovement(joy)
     end
 end
 
