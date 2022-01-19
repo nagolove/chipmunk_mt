@@ -42,6 +42,15 @@ local pw = require("physics_wrapper")
 local bodyIter
 local shapeIter
 
+local Tank = {}
+
+
+
+
+
+
+
+
 local tanks = {}
 
 
@@ -187,6 +196,7 @@ local function initRenderCode()
     ]])
 
    pipeline:pushCode("poly_shape_smart", [[
+    local inspect = require 'inspect'
     local col = {1, 0, 0, 1}
     local inspect = require "inspect"
 
@@ -199,12 +209,13 @@ local function initRenderCode()
     while true do
         love.graphics.setColor(col)
 
-        local cmd = graphic_command_channel:demand()
         local id = graphic_command_channel:demand()
+        local cmd = graphic_command_channel:demand()
 
         -- команды cmd:
         -- new      - создать новый объект
         -- draw     - рисовать существущий
+        -- ?????? draw_new - обновить координаты и рисовать ???????
         -- remove   - удалить объект
 
         if cmd == "new" then
@@ -215,6 +226,10 @@ local function initRenderCode()
         elseif cmd == "remove" then
             hash[id] = nil
         end
+
+        --print('id', id)
+        --print('cmd', cmd)
+        --print('verts', inspect(verts))
 
         love.graphics.polygon('fill', verts)
 
@@ -258,28 +273,59 @@ local function initRenderCode()
     end
     ]])
 
+   pipeline:pushCode('pop_transform', [[
+    local gr = love.graphics
+    local yield = coroutine.yield
+    while true do
+        gr.origin()
+        yield()
+    end
+    ]])
+
 
 end
 
 
 local tanks_num = 500
 
+local id_counter = 0
+
+local function make_id()
+   id_counter = id_counter + 1
+   return id_counter
+end
+
 local camera = love.math.newTransform()
 
-local function init()
-
-   initJoy()
-   initRenderCode()
-   pw.init(pipeline)
-   last_render = love.timer.getTime()
-
+local function spawnPolyShapesObjects()
    local w, h = love.graphics.getDimensions()
    for _ = 1, tanks_num do
       local xp, yp = love.math.random(1, w), love.math.random(1, h)
-      table.insert(tanks, pw.newBoxBody(xp, yp))
-   end
+      local body = pw.newBoxBody(xp, yp)
+      local tank = {
+         first_render = true,
+         body = body,
+         id = make_id(),
+      }
+      body.user_data = tank
+      table.insert(tanks, tank)
 
+      local minx, miny = -6000, -6000
+      local maxx, maxy = 12000, 12000
+      local rand = love.math.random
+      local posx, posy = rand(minx, maxx), rand(miny, maxy)
+
+      body:bodySetPosition(posx, posy)
+   end
+end
+
+local function init()
+   initJoy()
+   initRenderCode()
+   pw.init(pipeline)
+   spawnPolyShapesObjects()
    debug_print("phys", 'pw.getBodies()', inspect(pw.getBodies()))
+   last_render = love.timer.getTime()
 end
 
 local function circle_under_mouse()
@@ -305,6 +351,10 @@ local function print_io_rate()
    pipeline:close()
 end
 
+local function render_tanks()
+   pw.eachSpaceBody(bodyIter)
+end
+
 
 
 
@@ -319,33 +369,35 @@ local function render()
    pipeline:push(camera)
    pipeline:close()
 
-   pw.eachSpaceBody(bodyIter)
-   circle_under_mouse()
+   render_tanks()
+
+   pipeline:openAndClose('pop_transform')
 
    print_io_rate()
-
+   circle_under_mouse()
    pipeline:openAndClose('print_debug_filters')
 
    pipeline:sync()
 end
 
 local is_stop = false
-
 local lvec = require("vector-light")
 
-local function eachShape(b, shape)
-   debug_print('phys', 'eachShape call')
+local function gather_verts(shape)
+   local num = pw.polyShapeGetCount(shape)
+   local verts = {}
+   for i = 0, num - 1 do
+      local vert = pw.polyShapeGetVert(shape, i)
+      table.insert(verts, vert.x)
+      table.insert(verts, vert.y)
+   end
+   return verts
+end
+
+local function eachShape_smart(b, shape)
+
 
    local shape_type = pw.polyShapeGetType(shape)
-
-
-
-   local len = lvec.len(b.v.x, b.v.y)
-
-   local epsilon = 0.0001
-   if len < epsilon then
-
-   end
 
    if shape_type == pw.CP_POLY_SHAPE then
 
@@ -353,25 +405,58 @@ local function eachShape(b, shape)
 
 
 
-      local num = pw.polyShapeGetCount(shape)
-      local verts = {}
-      for i = 0, num - 1 do
-         local vert = pw.polyShapeGetVert(shape, i)
+      local body_wrap = pw.cpBody2Body(b)
+      local tank = body_wrap.user_data
 
-
-         table.insert(verts, vert.x)
-         table.insert(verts, vert.y)
+      if not tank then
+         error("tank is nil")
       end
 
-      if verts then
-         pipeline:open('poly_shape')
+      pipeline:open('poly_shape_smart')
+      pipeline:push(tank.id)
 
+      if tank.first_render then
+         local verts = gather_verts(shape)
+         pipeline:push('new')
          pipeline:push(verts)
-         pipeline:close()
+
+         tank.first_render = false
+         tank.prev_posx = body_wrap.body.p.x
+         tank.prev_posy = body_wrap.body.p.y
+      else
+
+         local len = lvec.len(b.v.x, b.v.y)
+         local epsilon = 0.0001
+         if len < epsilon then
+            pipeline:push('draw')
+
+         else
+
+            local verts = gather_verts(shape)
+            pipeline:push('new')
+            pipeline:push(verts)
+            tank.first_render = true
+         end
+
       end
 
+      pipeline:close()
    end
 
+end
+
+local function eachShape(b, shape)
+   local shape_type = pw.polyShapeGetType(shape)
+   if shape_type == pw.CP_POLY_SHAPE then
+
+
+
+
+      pipeline:open('poly_shape')
+      local verts = gather_verts(shape)
+      pipeline:push(verts)
+      pipeline:close()
+   end
 end
 
 local function eachBody(b)
@@ -386,7 +471,8 @@ local function eachBody(b)
 end
 
 bodyIter = pw.newEachSpaceBodyIter(eachBody)
-shapeIter = pw.newEachBodyShapeIter(eachShape)
+
+shapeIter = pw.newEachBodyShapeIter(eachShape_smart)
 
 
 local function cameraScale(j)
@@ -432,7 +518,7 @@ end
 local function applyInput()
    local leftBtn, rightBtn, downBtn, upBtn = 3, 2, 1, 4
    local k = 0.1
-   local tank = tanks[1]
+   local tank = tanks[1].body
    if joy then
 
 
